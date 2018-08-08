@@ -1,0 +1,9 @@
+etc/default/easycluster.conf	etc/default
+scripts/cce_mpp			usr/bin
+scripts/cce_mpinfo		usr/bin
+scripts/cce_user		usr/bin
+scripts/cce_mqinfo		usr/bin
+scripts/cce_quota		usr/bin
+scripts/toprod			usr/sbin
+scripts/todrain			usr/sbin
+scripts/topowerup		usr/sbin

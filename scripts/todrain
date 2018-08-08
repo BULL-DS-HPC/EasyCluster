@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Auteur : Gilbert Nicolas - Bull - update: 13/06/18
+
+function usage ()
+{
+        echo -e "\n Usage : $0 <nodelist> <reason> \n"
+        exit 0
+}
+
+nodelist=$1
+reason=$2
+
+if [ -z "$nodelist" ] || [ -z "$reason" ]; then
+    usage
+fi
+
+scontrol update nodename=$nodelist state=drain reason="#$reason"
+
+

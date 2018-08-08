@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# Auteur : Gilbert Nicolas - Bull - update: 13/06/18
+
+if [ ! -f /etc/default/easycluster.conf ];then
+	echo -e "\n /!\ Error no configuration found ! \n"
+	exit 1
+else
+	source /etc/default/easycluster.conf
+fi
+
+if [ ${enable_suser} != "on" ];then
+       echo -e "\nThe command is not enabled\n"
+       exit 1
+fi
+
+usage="$0 [-S] [-X|-Y] -u utilisateur "
+
+function usage ()
+{
+        echo ""
+        echo -e "Usage : $0 [-S] [-X|-Y] -u utilisateur "
+        echo -e ""
+        echo -e "\t -S \t Utilisation screen"
+        echo -e "\t -X|Y \t Utilisation export graphique"
+        echo ""
+        exit 0
+}
+
+DEST_USER=""
+X11OPT=""
+DATE=$(date +%Y%m%d%H%M%S)
+
+while getopts h:S:u:XY c 2> /dev/null
+do
+    case $c in 
+        \? )    echo "Error :" usage >&2 ; exit 1 ;;
+         h )    usage ; exit 0 ;;
+         u )    DEST_USER_ARG=$OPTARG ;;
+	 S )	SSCREEN="-$c" ;;
+       X|Y )    X11OPT="-$c" ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+if [ "$*" != "" ]; then
+    DEST_USER_ARG=$1
+fi
+
+if [ "`echo ${DEST_USER_ARG} | grep '@'`" != "" ]; then
+    DEST_USER=`echo ${DEST_USER_ARG} | cut -d'@' -f1`
+    REMOTE_HOST=`echo ${DEST_USER_ARG} | cut -d'@' -f2`
+else
+    DEST_USER=${DEST_USER_ARG}
+fi
+if [ -z "${DEST_USER}" ]; then
+    usage
+fi
+
+if [ -z "${X11OPT}" ]; then
+	if [ -n "${SSCREEN}" ];then
+		chmod a+rw $(tty)
+	fi
+	sudo -u ${DEST_USER} -i 
+else
+	if ! xauth nextract - $(echo $DISPLAY | sed 's/localhost//g') | sudo -u ${DEST_USER} -H xauth nmerge - 2> /dev/null ; then
+		echo \"Error : Impossible initialisation session graphique utilisateur\" >&2
+		exit 1
+	fi
+	if [ -n "${SSCREEN}" ];then
+		chmod a+rw $(tty)
+	fi
+	sudo -u ${DEST_USER} -i
+	sudo -u ${DEST_USER} -H xauth remove $(echo ${DISPLAY} | sed 's/localhost//g')
+fi
+

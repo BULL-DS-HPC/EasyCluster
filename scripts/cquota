@@ -1,0 +1,248 @@
+#!/bin/bash 
+
+# Auteur : Gilbert Nicolas - Bull - update: 13/06/18
+
+if [ ! -f /etc/default/easycluster.conf ];then
+	echo -e "\n /!\ Error no configuration found ! \n"
+	exit 1
+else
+	source /etc/default/easycluster.conf
+fi
+
+if [ ${enable_quotals} != "on" ];then
+       echo -e "\nThe command is not enabled\n"
+       exit 1
+fi
+
+# Set variable
+#-------------
+
+lign4='-----'
+lign5='------'
+lign10='---------'
+lign20='------------------'
+deftiret='-'
+defgracenone='[--none--]'
+defgrace='[-----]'
+defnolimit='nolimits'
+nni=$(whoami)
+listofvolume=$(echo $listofvolume $listofvolumep)
+
+# Set function
+#--------------
+
+infoquota () {
+	unset resultq indexq
+	while IFS= read -r -u3 -d $'\n' file; do resultq[indexq++]="$file"; done 3< <(cmde)
+}
+
+usage ()
+{
+        echo -e "\n Usage : $0 [-i] [-u NNI] [-g projets ] "
+	echo -e " Options: \n\t [-u] & [-g] : only special users \n"
+	exit 0
+}
+
+# Main
+#------
+
+if [ ! -z $(echo ${info} | cut -c 1-3) ];then
+	echo -e "\n \033[0;31m Information \033[0m : ${info} \n"
+fi
+
+while getopts h:u:g:i c 2> /dev/null
+do
+    case $c in
+        \? )    usage           ;;
+         h )    usage           ;;
+         u )    nni="$OPTARG"   ;
+		if [ "$(whoami)" != "root" -o -z ${nni} ];then
+        		echo -e "\n No information quota is available for another user of us. \n"
+			usage
+		fi		;;
+         g )    grpp="$OPTARG"  ;
+		if [ -z ${grpp} ];then 
+			echo -e "\n You must specifia a group. \n"
+			usage
+		fi
+		groups | grep ${grpp} 1>/dev/null 2>&1
+		if [ $? = "0" -o $(whoami) = "root" ];then
+			listofvolume=${listofvolumep}	
+		else
+        		echo -e "\n No information quota is available for another group than yours. \n"
+        		exit 2
+		fi	        ;;
+         i )    choice='inodev' ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+
+if [ "${choice}" = "inodev" ];then
+	format_printf='%33s %12s %10s %10s %10s %12s %10s %10s %10s %12s\n'
+	format_printfred='%33s %12s \e[1;31m%10s\e[m %10s %10s %12s %10s %10s %10s %12s\n'
+	if [ -z "${grpp}" ];then
+		echo -e "\n Disk quota for user ${nni} ( uid $(id -u ${nni}) ):"
+	else
+		echo -e "\n Disk quota for group ${grpp} ( gid $(getent group cl-pj-simumeca-admin | awk -F ":" '{print$3}') ):"
+	fi
+	printf "%66s %5s %10s %10s %5s %10s\n" ${lign20} VOLUME ${lign20} ${lign20} INODE ${lign20}
+	printf "${format_printf}" type filesystem usage soft hard grace files soft hard grace
+	printf "${format_printf}" ${lign10} ${lign10} ${lign5} ${lign4} ${lign4} ${lign5} ${lign5} ${lign4} ${lign4} ${lign5}
+else
+	format_printf='%33s %12s %10s %10s %10s %12s\n'
+	format_printfred='%33s %12s \e[1;31m%10s\e[m %10s %10s %12s %12s\n'
+	if [ -z "${grpp}" ];then
+                echo -e "\n Disk quota for user ${nni} ( uid $(id -u ${nni}) ):"
+        else
+                echo -e "\n Disk quota for group ${grpp} ( gid $(getent group cl-pj-simumeca-admin | awk -F ":" '{print$3}') ):"
+        fi
+	printf "%66s %5s %10s %10s %5s %10s\n" ${lign20} VOLUME ${lign20} 
+	printf "${format_printf}" type filesystem usage soft hard grace 
+	printf "${format_printf}" ${lign10} ${lign10} ${lign5} ${lign4} ${lign4} ${lign5}
+fi
+
+
+for vol in ${listofvolume};do
+
+	IFS="@" read filesystem typefs typequota visiblename <<< "$(echo ${vol} | awk -F "|" '{print $1"@"$2"@"$3"@"$4}')"
+
+	if [ $typefs = "nfs" ];then
+
+		if [ ${typequota} = "uquota" ];then
+
+			unset cmde ; cmde () { quota -f /${filesystem} -s 2>/dev/null | grep ${filesystem} | tr -s " " "\n"; } ; infoquota
+			cmde | grep "*" 1>/dev/null
+			if [ $? = "0" ];then
+				printf "${format_printfred}" USR/${nni} ${visiblename} ${resultq[1]} ${resultq[2]} ${resultq[3]} ${resultq[4]} ${resultq[5]} ${resultq[6]} ${resultq[7]} ${defgrace} | head -n 1
+			else
+				printf "${format_printf}" USR/${nni} ${visiblename} ${resultq[1]} ${resultq[2]} ${resultq[3]} ${defgrace} ${resultq[4]} ${resultq[5]} ${resultq[6]} ${defgrace} | head -n 1
+			fi
+
+		elif [ ${typequota} = "prjquota" ];then
+
+			IFS="@" read limitequota quotausage <<< "$(df -h /${filesystem}/${nni}/ | grep -v "Sys. de fichiers" | awk '{print $2"@"$3}')"
+
+			if [ $(echo "${quotausage} < ${limitequota}" | sed -e "s/,/./g;s/K/*1024/g;s/M/*1024*1024/g;s/G/*1024*1024*1024/g;s/T/*1024*1024*1024*1024/g" | bc) = "0"  ];then
+				printf "${format_printfred}" PRJ/${nni} ${visiblename} ${quotausage} ${limitequota} ${limitequota} ${defgracenone} ${deftiret} ${deftiret} ${deftiret} ${defgrace} | head -n 1
+			else
+				printf "${format_printf}" PRJ/${nni} ${visiblename} ${quotausage} ${limitequota} ${limitequota} ${defgrace} ${deftiret} ${deftiret} ${deftiret} ${defgrace} | head -n 1
+			fi
+
+		elif [ ${typequota} = "volquota" ];then
+
+			if [ -d ${filesystem}/${nni}/ ];then
+				unset cmde
+				cmde () { df -Ph ${filesystem}/${nni}/ | tail -n 1 | sed 's/^[ \t]*//;s/[ \t]*$//' | tr -s " " "\n"; }
+				infoquota
+				if [ "${resultq[3]}" = "100%" ];then
+					printf "${format_printfred}" VOL/${nni} ${visiblename} ${resultq[2]} ${resultq[1]} ${resultq[1]} ${defgracenone} ${deftiret} ${deftiret} ${deftiret} ${defgrace} | head -n 1
+        			else
+					printf "${format_printf}" VOL/${nni} ${visiblename} ${resultq[2]} ${resultq[1]} ${resultq[1]} ${defgrace} ${deftiret} ${deftiret} ${deftiret} ${defgrace} | head -n 1
+        			fi
+			fi
+
+		elif [ ${typequota} = "notsetquota" ];then
+
+			printf "${format_printf}" notset ${visiblename} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} | head -n 1
+		else
+
+			printf "${format_printf}" notset ${visiblename} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} | head -n 1
+		fi
+
+	elif [ $typefs = "gpfs" ];then
+
+		if [ ${typequota} = "filesetuquota" ];then
+
+			unset cmde
+			cmde () { /usr/lpp/mmfs/bin/mmlsquota -u ${nni} ${filesystem} --block-size auto 2> /dev/null | grep ${visiblename} | tr -s " " "\n"; }
+			infoquota
+			cmde | grep "day" 1>/dev/null
+			if [ $? = "0" ];then
+				printf "${format_printfred}" USR/${nni} ${visiblename} ${resultq[3]} ${resultq[4]} ${resultq[5]} ${resultq[7]}${resultq[8]} ${resultq[10]} ${resultq[11]} ${resultq[12]} ${resultq[13]} | head -n 1
+			else
+				printf "${format_printf}" USR/${nni} ${visiblename} ${resultq[3]} ${resultq[4]} ${resultq[5]} ${defgrace} ${resultq[9]} ${resultq[10]} ${resultq[11]} ${defgrace} | head -n 1
+			fi
+		
+		elif [ ${typequota} = "uquota" ];then
+
+			unset cmde
+			cmde () { /usr/lpp/mmfs/bin/mmlsquota -u ${nni} ${filesystem} --block-size auto | grep -Ev 'Block Limits|Filesystem' | sed 's/|//g' | tr -s ' ' '\n'; }
+                        infoquota
+			cmde | grep "day" 1>/dev/null
+			if [ $? = "0" ];then
+				printf "${format_printfred}" USR/${nni} ${visiblename} ${resultq[2]} ${resultq[3]} ${resultq[4]} ${resultq[6]}${resultq[7]} ${resultq[8]} ${resultq[9]} ${resultq[10]} ${resultq[11]} | head -n 1
+			else
+				printf "${format_printf}" AUSR/${nni} ${visiblename} ${resultq[2]} ${resultq[3]} ${resultq[4]} ${defgrace} ${resultq[7]} ${resultq[8]} ${resultq[9]} ${defgrace} | head -n 1
+			fi
+
+		elif [ ${typequota} = "gquota" ];then
+	
+			unset cmde
+			if [ "$(whoami)" = "root" ];then
+				listgrp="${grpp}"
+			else
+				listgrp=$(groups | tr " " "\n" | grep -E ${listgrpprj})
+			fi
+			for grpp in ${listgrp};do
+				unset cmde
+                                cmde () { /usr/lpp/mmfs/bin/mmlsquota -g ${grpp} ${filesystem} --block-size auto | grep 'GRP' | sed 's/|//g' | tr -s ' ' '\n' ;}
+                        	infoquota
+				if [ "${resultq[3]}" != "none" ];then
+					cmde | grep "day" 1>/dev/null
+					if [ $? = "0" ];then
+						printf "${format_printfred}" GRP/${grpp} ${visiblename} ${resultq[3]} ${resultq[4]} ${resultq[5]} ${resultq[6]}${resultq[8]} ${resultq[9]} ${resultq[10]} ${resultq[10]} ${resultq[11]} | head -n 1
+					else
+						printf "${format_printf}" GRP/${grpp} ${visiblename} ${resultq[3]} ${resultq[4]} ${resultq[5]} ${defgrace} ${resultq[8]} ${resultq[9]} ${resultq[10]} ${defgrace} | head -n 1
+					fi
+				fi
+			done
+
+		elif [ ${typequota} = "notsetquota" ];then
+
+			printf "${format_printf}" notset ${visiblename} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} | head -n 1
+		
+		else
+
+			printf "${format_printf}" notset ${visiblename} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} | head -n 1
+
+		fi
+		
+	elif [ ${typefs} = "lustre" ];then
+
+		if [ ${typequota} = "uquota" ];then
+
+			unset cmde
+			cmde () { /usr/bin/lfs quota -u ${nni} /${filesystem} | grep ${filesystem} | sed 's/^[ \t]*//;s/[ \t]*$//' | tr -s ' ' '\n'; }
+			infoquota
+
+			# Set human reable
+
+			for x in $(seq 1 3);do
+				if [ ${resultq[$x]} -le "999" ];then
+					resultq[$x]=$(echo ${resultq[$x]}K)
+				elif [ ${resultq[$x]} -le "999999" ];then
+					resultq[$x]=$(echo $(echo ${resultq[$x]}/1000|bc -l | cut -c 1-6)M)
+				elif [ ${resultq[$x]} -le "999999999" ];then
+					resultq[$x]=$(echo $(echo ${resultq[$x]}/1000000|bc -l | cut -c 1-6)G)
+				elif [ ${resultq[$x]} -ge "999999999" ];then
+					resultq[$x]=$(echo $(echo ${resultq[$x]}/1000000000|bc -l | cut -c 1-6)T)
+				fi
+			done
+
+			cmde | grep "*" 1>/dev/null
+			if [ $? = "0" ];then
+				printf "${format_printfred}" USR/${nni} ${visiblename} ${resultq[1]} ${resultq[2]} ${resultq[3]} ${resultq[4]} ${resultq[5]} ${resultq[6]} ${resultq[7]} ${resultq[8]} | head -n 1
+			else
+				printf "${format_printf}" USR/${nni} ${visiblename} ${resultq[1]} ${resultq[2]} ${resultq[3]} ${defgrace} ${resultq[5]} ${resultq[6]} ${resultq[7]} ${defgrace} | head -n 1
+			fi
+		else
+
+			printf "${format_printf}" notset ${visiblename} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} ${deftiret} | head -n 1
+		
+		fi
+	fi
+done
+
+echo ""
+

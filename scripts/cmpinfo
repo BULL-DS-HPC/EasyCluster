@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# Auteur : Gilbert Nicolas - Bull - update: 13/06/18
+
+if [ ! -f /etc/default/easycluster.conf ];then
+	echo -e "\n /!\ Error no configuration found ! \n"
+	exit 1
+else
+	source /etc/default/easycluster.conf
+fi
+
+if [ ${enable_mpinfo} != "on" ];then
+       echo -e "\nThe command is not enabled\n"
+       exit 1
+fi
+
+echo -e "\n \033[0;36m [Cluster - ${clustername} ( ${batchname} version ${versionbatch} )] \033[0m \n"
+
+LIPART=$(scontrol show part | sed -n '/PartitionName=/{s/.*PartitionName=\(.*\).*$/\1/p}')
+
+LIGN8="--------"
+LIGN10="----------"
+LIGN15="---------------"
+LIGN18="------------------"
+LIGN30="------------------------------"
+
+printf "%49s %5s %10s %10s %5s %10s\n" $LIGN18 NODE $LIGN18 $LIGN18 CPU $LIGN18
+printf "%10s %10s %8s %10s %10s %10s %10s %10s %10s %10s %10s %10s %30s\n" Name Priority State Total Down Used Free Total Down Used Free Taux Nodes
+printf "%10s %10s %8s %10s %10s %10s %10s %10s %10s %10s %10s %10s %30s\n" $LIGN8 $LIGN8 $LIGN8 $LIGN10 $LIGN10 $LIGN10 $LIGN10 $LIGN10 $LIGN10 $LIGN10 $LIGN10 $LIGN10 $LIGN30
+
+for Nameofpart in $LIPART;do
+
+	infopart=$(scontrol show part $Nameofpart --oneliner)
+	echo $infopart | grep -i "Default=Yes" 2>&1 1>/dev/null
+	if [ $? = "0" ];then
+		Default="*"
+	else
+		Default=""	
+	fi
+	echo $infopart | grep "Priority=" 2>&1 1>/dev/null
+	if [ $? = "0" ];then
+ 		Priority=$(echo $infopart | sed 's/.*Priority=\(.*\) .*$/\1/' | awk '{print$1}' || echo "1")
+	else
+		Priority="1"
+	fi
+	State=$(echo $infopart | sed 's/.*State=\(.*\) .*$/\1/' | awk '{print$1}')
+	
+	if [ $typecluster = "bluegen" ];then
+		Nodes=$(echo $infopart | sed 's/.* BasePartitions=\(.*\) .*$/\1/' | awk '{print$1}')
+	else
+		Nodes=$(echo $infopart | sed 's/.* Nodes=\(.*\) .*$/\1/' | awk '{print$1}')
+	fi
+	
+	IFS="|" read Anodes Inodes Dnodes Tnodes <<< "$(sinfo -h -p $Nameofpart -o %F | awk -F '/' '{for (o=1;o<=NF;o++) if ($o ~ /.*K/) { $o=$o*1000 }} END {print $1"|"$2"|"$3"|"$4 }')"
+	IFS="|" read Acpus Icpus Dcpus Tcpus <<< "$(sinfo -h -p $Nameofpart -o %C | awk -F '/' '{for (o=1;o<=NF;o++) if ($o ~ /.*K/) { $o=$o*1000 }} END {print $1"|"$2"|"$3"|"$4 }')"
+	Taux=$(echo $Acpus/$Tcpus*100| bc -l | cut -c 1-5)	
+		
+        printf "%10s %10s %8s %10s %10s %10s %10s %10s %10s %10s %10s %10s %30s\n" $Nameofpart $Priority"$Default" $State $Tnodes $Dnodes $Anodes $Inodes $Tcpus $Dcpus $Acpus $Icpus $Taux% $Nodes
+
+done
+
+echo ""

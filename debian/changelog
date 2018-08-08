@@ -1,0 +1,5 @@
+easycluster (3.9.6) debian9; urgency=low
+
+  * Init version 3.9.6
+
+ -- Nicolas Gilbert <nicolas.gilbert@bull.net>  Mon, 13 June 2018 07:47:03 +0100

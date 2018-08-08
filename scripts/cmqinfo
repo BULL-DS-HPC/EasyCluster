@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Auteur : Gilbert Nicolas - Bull - update: 13/06/18
+
+if [ ! -f /etc/default/easycluster.conf ];then
+	echo -e "\n /!\ Error no configuration found ! \n"
+	exit 1
+else
+	source /etc/default/easycluster.conf
+fi
+
+if [ ${enable_mqinfo} != "on" ];then
+       echo -e "\nThe command is not enabled\n"
+       exit 1
+fi
+
+echo -e "\n \033[0;36m [Cluster - ${clustername} ( ${batchname} version ${versionbatch} )] \033[0m \n"
+
+if [ $(whoami) = "root" ];then
+	sacctmgr list qos forma=Name%20,Priority,GraceTime,PreemptMode,UsageFactor,GrpJobs,GrpSubmit,MaxJobs,MaxCPUs,MaxNodes,MaxWall,GrpTRES | sed 's/^/     /'
+else
+	sacctmgr list qos forma=Name%20,Priority,GraceTime,PreemptMode,UsageFactor,GrpJobs,GrpSubmit,MaxJobs,MaxCPUs,MaxNodes,MaxWall,GrpTRES | grep -Ev "${qoshidden}" | sed 's/^/     /'
+fi
+
+echo ""

@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Auteur : Gilbert Nicolas - Bull - update: 13/06/18
+
+function usage ()
+{
+        echo -e "\n Usage : $0 <nodelist> \n"
+        exit 0
+}
+
+nodelist=$1
+
+if [ -z "$nodelist" ]; then
+    usage
+fi
+
+scontrol update nodename=$nodelist state=power_up
+

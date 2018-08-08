@@ -1,0 +1,365 @@
+#!/bin/bash
+
+# Auteur : Gilbert Nicolas - Bull - update: 13/06/18
+
+# Declaration des variales
+#-------------------------
+
+if [ ! -f /etc/default/easycluster.conf ];then
+	echo -e "\n /!\ Error no configuration found ! \n"
+	exit 1
+else
+	source /etc/default/easycluster.conf
+fi
+
+if [ ${enable_mpp} != "on" ];then
+       echo -e "\nThe command is not enabled\n"
+       exit 1
+fi
+
+red="\033[0;31m"
+green="\033[0;32m"
+blue="\033[0;34m"
+yellow="\033[0;33m"
+majen="\033[0;36m"
+fc="\033[0m"
+tmp="/tmp/.mpp.$(whoami).$(date +"%Y%m%d_%H%M%S")"
+lign8='--------'
+lign10='----------'
+lign15='---------------'
+lign20='--------------------'
+format_squeue='%.12i %.8P %.20q %.15j %.10u %.10T %.12M %.12l %.8D %.20S %.20e %.10n %.10Q %.20R'
+format_printf='%12s %8s %20s %15s %10s %10s %12s %12s %8s %20s %20s %10s %10s %20s\n'
+format_header='JOBID PART QOS NAME USER STATE TIME TIMELIMIT NODES START_TIME END_TIME REQ_NO PRIORITY NODELIST'
+verbose=''
+choice='all_jobs'
+ident='0'
+tim='0'
+
+clusterpart=$(scontrol show part | awk -F "=" '/PartitionName=/{print$2}' | tr "\n" "/")
+
+# Declaration des fonctions
+#---------------------------
+
+function usage ()
+{
+        echo ""
+        echo -e " Usage : $0 [-v] [-u NNI] [-s status] [-p partition] [ -n node ]"
+	echo -e " Usage : $0 -c by_xxx" 
+	echo -e " Usage : $0 -j jobid [-o format,format,format]"
+	echo -e " Usage : $0 -N nodelist [-o format,format,format]"
+	echo -e " Usage : $0 [-J NNI] [-S starttime] [-E endtime] [-o format,format,...] "
+        echo -e ""
+	echo -e " -v \t Niveau de verbosité"
+	echo -e " -u \t Affichage des jobs en machine pour un utilisateur ( '-u my' affiche mes jobs )"
+	echo -e " -s \t Affichage des jobs en machine par status ( run / pend / other ) "
+	echo -e " -p \t Affichage des jobs en machine par partition ( ${clusterpart} )"
+	echo -e " -n \t Affichage des jobs en machine par node ( node1,node2,... / node[1-5] )"
+        echo -e " -c \t Affichage du nombre de jobs en machine trier ( by_user / by_part / by_qos )"
+	echo -e " -j \t Affichage du status d'un job "
+        echo -e " -J \t Historique des jobs d'un utilisateur "
+	echo -e " -N \t Historique des jobs sur des noeuds ( /!\ par defaut affichage depuis la date du jour )"
+	echo -e " -S \t Historique des jobs apres cette date YYYY-MM-DD[THH:MM[:SS]] "
+        echo -e " -E \t Historique des jobs avant cette date YYYY-MM-DD[THH:MM[:SS]]"
+	echo -e " -o \t Modification du format de sortie :"
+	echo -e ""
+	echo -e "    \t\t AllocCPUS       Account       AssocID       AveCPU"
+        echo -e "    \t\t AveCPUFreq      AvePages      AveRSS        AveVMSize"
+        echo -e "    \t\t BlockID         Cluster       Comment       ConsumedEnergy"
+        echo -e "    \t\t CPUTime         CPUTimeRAW    DerivedExitCode Elapsed"
+        echo -e "    \t\t Eligible        End           ExitCode      GID"
+        echo -e "    \t\t Group           JobID         JobName       Layout"
+        echo -e "    \t\t MaxPages        MaxPagesNode  MaxPagesTask  MaxRSS"
+        echo -e "    \t\t MaxRSSNode      MaxRSSTask    MaxVMSize     MaxVMSizeNode"
+        echo -e "    \t\t MaxVMSizeTask   MinCPU        MinCPUNode    MinCPUTask"
+        echo -e "    \t\t NCPUS           NNodes        NodeList      NTasks"
+        echo -e "    \t\t Priority        Partition     QOSRAW        ReqCPUS"
+        echo -e "    \t\t Reserved        ResvCPU       ResvCPURAW    Start"  
+        echo -e "    \t\t State           Submit        Suspended     SystemCPU"
+        echo -e "    \t\t Timelimit       TotalCPU      UID           User"
+        echo -e "    \t\t UserCPU         WCKey         WCKeyID"
+        echo -e ""
+        echo ""
+        exit 0
+}
+
+
+# Tri des arguments
+# ------------------
+
+while getopts h:u:s:p:n:c:j:N:J:S:E:o:v c 2> /dev/null
+do
+    case $c in 
+	\? ) 	usage                   ;;
+    	 h )    usage                   ;;
+         u )    choice='by_usp'	        ; nni="-u $OPTARG"   ;;
+         s )    choice='by_usp'         ; case $OPTARG in 
+						run )	state="-t RUNNING" ;;
+						pend )	state="-t PENDING" ;;
+						other ) state="-t SUSPENDED,COMPLETED,CANCELLED,FAILED,TIMEOUT,NODE_FAIL,PREEMPTED,COMPLETING,CONFIGURING" ;;
+						* ) usage ;;
+					  esac               ;;
+	 p )	choice='by_usp'         ; part="-p $OPTARG"  ;;
+	 n )    choice='by_usp'		; if [ $slurmversion = "2.3.3" ];then nodelist="-n $OPTARG"; else nodelist="-w $OPTARG";fi  ;;
+	 c )    choice='nbby_users'     ; by="$OPTARG"       ;;
+         j )    choice='stats_job'      ; jobid="-j $OPTARG"     ; ident='1' ;;
+	 N )    choice='stats_job'      ; nnode="-N $OPTARG"     ; ident='3' ;;
+	 J )	choice='stats_job'      ; snni="-u $OPTARG"      ; ident='2' ;;
+	 S )	choice='stats_job'      ; timestart="-S $OPTARG" ; tim='3'   ;;
+	 E )	choice='stats_job'      ; timeend="-E $OPTARG"	 ; tim='4'   ;;
+	 o )	formatplus=$OPTARG	;;
+	 v )    verbose='yes'           ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+# Choix de l'affichage 
+# ---------------------
+
+if [ "$verbose" != "yes" ];then
+
+        # Non verbose
+	format_squeue='%.12i %.8P %.20q %.15j %.10u %.10T %.12M %.12l %.20S %.8D %.20R'
+	format_printf='%12s %8s %20s %15s %10s %10s %12s %12s %20s %8s %20s\n'
+	format_header='JOBID PART QOS NAME USER STATE TIME TIMELIMIT START_TIME NODES NODELIST'
+	format_ligne_header=$(echo ${lign10} ${lign8} ${lign20} ${lign15} ${lign10} ${lign10} ${lign10} ${lign10} ${lign20} ${lign8} ${lign20})
+else
+
+	# Verbose
+	format_squeue='%.12i %.8P %.20q %.15j %.10u %.10T %.12M %.12l %.8D %.8C %.20S %.20e %.10n %.10Q %.20R'
+	format_printf='%12s %8s %20s %15s %10s %10s %12s %12s %8s %8s %20s %20s %10s %10s %20s\n'
+	format_header='JOBID PART QOS NAME USER STATE TIME TIMELIMIT NODES CPUS START_TIME END_TIME REQ_NO PRIORITY NODELIST'
+	format_ligne_header=$(echo ${lign10} ${lign8} ${lign20} ${lign15} ${lign10} ${lign10} ${lign10} ${lign10} ${lign8} ${lign8} ${lign20} ${lign20} ${lign10} ${lign10} ${lign20})
+fi
+
+# Affichage du cluster ou l'on se trouve 
+# ---------------------------------------
+
+echo -e "\n \033[0;36m [Cluster - ${clustername} ( ${batchname} version ${versionbatch} )] \033[0m"
+
+# Affichage des jobs en machines
+# --------------------------------
+
+if [ "${choice}" = "all_jobs" ];then
+
+        NBRUN=$(squeue -t RUNNING -o '%.10i' --noheader | wc -l)
+        NBPEN=$(squeue -t PENDING -o '%.10i' --noheader | wc -l)
+        NBOTH=$(squeue -t SUSPENDED,COMPLETING --noheader | wc -l)
+
+	echo ""
+	printf "${format_printf}" ${format_header}
+	printf "${format_printf}" ${format_ligne_header}
+	echo -e "${green}""$(squeue -t RUNNING -o "${format_squeue}" --noheader )"
+	echo -e "${majen}""$(squeue -t PENDING -o "${format_squeue}" --noheader )"
+        echo -e "${yellow}""$(squeue -t SUSPENDED,COMPLETING -o "${format_squeue}" --noheader )""${fc}"
+        exit 0
+
+# Affichage des jobs en machines avec compte par utilisateurs
+# -----------------------------------------------------------
+
+elif [ "${choice}" = "nbby_users" ];then
+
+        NBRUN=$(squeue -t RUNNING -o '%.10i' --noheader | wc -l)
+        NBPEN=$(squeue -t PENDING -o '%.10i' --noheader | wc -l)
+        NBOTH=$(squeue -t SUSPENDED,COMPLETING --noheader | wc -l)
+	squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' --noheader | grep K 1>/dev/null
+	if [ $? = "0" ];then
+		NBCPUS1=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' --noheader | grep 'K' | awk '{SUM += $1*1024} END {print SUM}')
+		NBCPUS2=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' --noheader | grep -v 'K' | awk '{SUM += $1} END {print SUM}')
+		NBCPUS=$((${NBCPUS1}+${NBCPUS2}))
+	else
+		NBCPUS=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' --noheader | awk '{SUM += $1} END {print SUM}')
+	fi
+	
+	NBNODE=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%6D' --noheader | awk '{SUM += $1} END {print SUM}')
+	
+        echo ""
+	if [ $by = "by_user" ];then
+
+	        listuser=$(squeue -o '%.20u' | sed '1d' | sort | uniq)
+		printf "%20s %15s %15s %15s %15s %15s\n" USERS RUN PEND OTHER NODES_USED CPUS_USED
+		printf "%20s %15s %15s %15s %15s %15s\n" ${lign15} ${lign15} ${lign15} ${lign15} ${lign15} ${lign15}
+	        for i in $listuser;do
+	                R=$(squeue -t RUNNING -o '%.10u' -u ${i} --noheader | wc -l)
+	                P=$(squeue -t PENDING -o '%.10u' -u ${i} --noheader | wc -l)
+	                O=$(squeue -t SUSPENDED,COMPLETING -u ${i} -o '%.10u' --noheader | wc -l)
+			N=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%6D' -u ${i} --noheader | awk '{total+=$1}END{print total}')
+			if [ -z $N ];then 
+				N=0
+			fi
+			squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -u ${i} --noheader | grep 'K' 1>/dev/null
+			if [ $? = "0" ];then
+				COEF=$(sinfo -o %Y --noheader)
+				C1=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -u ${i} --noheader | grep 'K' | awk '{SUM += $1*'${coef}'} END {print SUM}')
+				C2=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -u ${i} --noheader | grep -v 'K' | awk '{SUM += $1} END {print SUM}')
+				C=$((${C1}+${C2}))
+			else
+				C=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -u ${i} --noheader | awk '{total+=$1}END{print total}')
+			fi
+			if [ -z ${C} ];then 
+				C=0
+			fi
+	                printf "%20s %15s %15s %15s %15s %15s\n" ${i} ${R} ${P} ${O} ${N} ${C}
+		done
+		printf "%20s %15s %15s %15s %15s %15s\n" ${lign15} ${lign15} ${lign15} ${lign15} ${lign15} ${lign15}
+		printf "%20s %15s %15s %15s %15s %15s\n" Total ${NBRUN} ${NBPEN} ${NBOTH} ${NBNODE} ${NBCPUS}
+	        
+	elif [ $by = "by_part" ];then
+		listpart=$(scontrol show part | grep "PartitionName=" | sed 's/PartitionName=//g')
+		printf "%20s %15s %15s %15s %15s %15s\n" PART RUN PEND OTHER NODES_USED CPUS_USED
+		printf "%20s %15s %15s %15s %15s %15s\n" ${lign15} ${lign15} ${lign15} ${lign15} ${lign15} ${lign15}
+		for i in $listpart;do
+			R=$(squeue -t RUNNING -o '%.10u' -p ${i} --noheader | wc -l)
+                        P=$(squeue -t PENDING -o '%.10u' -p ${i} --noheader | wc -l)
+                        O=$(squeue -t SUSPENDED,COMPLETING -p ${i} -o '%.10u' --noheader | wc -l)
+                        N=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%6D' -p ${i} --noheader | awk '{total+=$1}END{print total}')
+			if [ -z $N ];then 
+				N=0
+			fi
+			squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -p ${i} --noheader | grep 'K' 1>/dev/null
+			if [ $? = "0" ];then
+				COEF=$(sinfo -o %Y --noheader)
+				C1=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -p ${i} --noheader | grep 'K' | awk '{SUM += $1*'$coef'} END {print SUM}')
+				C2=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -p ${i} --noheader | grep -v 'K' | awk '{SUM += $1} END {print SUM}')
+				C=$((${C1}+${C2}))
+			else
+				C=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -p ${i} --noheader | awk '{total+=$1}END{print total}')
+			fi
+			if [ -z ${C} ];then 
+				C=0
+			fi
+                        printf "%20s %15s %15s %15s %15s %15s\n" ${i} ${R} ${P} ${O} ${N} ${C}
+		done
+		printf "%20s %15s %15s %15s %15s %15s\n" ${lign15} ${lign15} ${lign15} ${lign15} ${lign15} ${lign15}
+		printf "%20s %15s %15s %15s %15s %15s\n" Total ${NBRUN} ${NBPEN} ${NBOTH} ${NBNODE} ${NBCPUS}
+		
+	elif [ $by = "by_qos" ];then
+		listqos=$(sacctmgr list qos format=Name%30 --noheader --parsable2 | grep -Ev "$qoshidden")
+		printf "%25s %15s %15s %15s %15s %15s\n" QOS RUN PEND OTHER NODES_USED CPUS_USED
+		printf "%25s %15s %15s %15s %15s %15s\n" ${lign20} ${lign15} ${lign15} ${lign15} ${lign15} ${lign15}
+		for i in $listqos;do
+			R=$(squeue -t RUNNING -o '%.10u' -q ${i} --noheader | wc -l)
+                        P=$(squeue -t PENDING -o '%.10u' -q ${i} --noheader | wc -l)
+                        O=$(squeue -t SUSPENDED,COMPLETING -q ${i} -o '%.10u'  --noheader | wc -l)
+                        N=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%6D' -q ${i} --noheader | awk '{total+=$1}END{print total}')
+			if [ -z $N ];then 
+				N=0
+			fi
+			squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -q ${i} --noheader | grep 'K' 1>/dev/null
+			if [ $? = "0" ];then
+				COEF=$(sinfo -o %Y --noheader)
+				C1=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -q ${i} --noheader | grep 'K' | awk '{SUM += $1*'$coef'} END {print SUM}')
+				C2=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -q ${i} --noheader | grep -v 'K' | awk '{SUM += $1} END {print SUM}')
+				C=$((${C1}+${C2}))
+			else
+				C=$(squeue -t RUNNING,SUSPENDED,COMPLETING -o '%10C' -q ${i} --noheader | awk '{total+=$1}END{print total}')
+			fi
+			if [ -z ${C} ];then 
+				C=0
+			fi
+                        printf "%25s %15s %15s %15s %15s %15s\n" ${i} ${R} ${P} ${O} ${N} ${C}
+		done
+		printf "%25s %15s %15s %15s %15s %15s\n" ${lign20} ${lign15} ${lign15} ${lign15} ${lign15} ${lign15}
+		printf "%25s %15s %15s %15s %15s %15s\n" Total ${NBRUN} ${NBPEN} ${NBOTH} ${NBNODE} ${NBCPUS}
+                
+	fi
+	echo -e "${fc}\n"
+        exit 0
+
+# Affichage de tous les jobs en machines 
+# ----------------------------------------
+
+elif [ "${choice}" = "by_usp" ];then
+
+	if [ "${typenni}" = "tolower" ];then 
+		nni=$(echo ${nni} | awk '{print $1,tolower($2)}')	
+	elif [ "${typenni}" = "toupper" ];then 
+		nni=$(echo ${nni} | awk '{print $1,toupper($2)}')
+	else
+		nni=${nni}
+	fi
+	echo ""
+	echo ${nni} | grep -E 'MY|my' 1>/dev/null
+	if [ $? = "0" ];then
+		nni="-u $(whoami)"
+	fi
+        printf "${format_printf}" ${format_header}
+        printf "${format_printf}" ${format_ligne_header}
+	ckstate=$(echo ${state} | sed 's/-t //g' | awk -F ',' '{print$1}')
+	if [ "${ckstate}" = "RUNNING" ];then
+		echo -e "${green}""$(squeue ${state} ${nni} $part $nodelist -o "${format_squeue}" --noheader )"
+	elif [ "${ckstate}" = "PENDING" ];then
+	        echo -e "${majen}""$(squeue ${state} ${nni} $part $nodelist -o "${format_squeue}" --noheader )"
+	elif [ "${ckstate}" = "SUSPENDED" ];then
+        	echo -e "${yellow}""$(squeue ${state} ${nni} $part $nodelist -o "${format_squeue}" --noheader )""${fc}"
+	else
+		echo -e "${green}""$(squeue -t RUNNING -o "${format_squeue}" ${nni} $part $nodelist --noheader )"
+		echo -e "${majen}""$(squeue -t PENDING -o "${format_squeue}" ${nni} $part $nodelist --noheader )"
+		echo -e "${yellow}""$(squeue -t SUSPENDED,COMPLETING -o "${format_squeue}" ${nni} $part $nodelist --noheader )"
+		
+	fi
+        echo -e "${fc}\n"
+        exit 0
+
+# Affichage des stats jobs en fonctions des arguments 
+# -----------------------------------------------------
+
+elif [ "${choice}" = "stats_job" ];then
+
+	if [ "${typenni}" = "tolower" ];then 
+		snni=$(echo ${snni} | awk '{print $1,tolower($2)}')	
+	elif [ "${typenni}" = "toupper" ];then 
+		snni=$(echo ${snni} | awk '{print $1,toupper($2)}')
+	else
+		nni=${nni}
+	fi	
+        sacct -a -t --duplicates --fields=user,Elapsed,Partition,Qos%20,JobID,Submit,Start,End,NNOdes,ExitCode,State,Suspended,NodeList,${formatplus} ${jobid} ${nnode} ${snni} ${timestart} ${timeend} > ${tmp} &
+        cktmp="1"
+        echo -e ""
+	echo -e "${yellow} ! Plus d'option avec l'option -o ( voir $0 -h ) ${fc}"
+	echo -e ""
+        while [ "${cktmp}" -ge "1" ];do
+                echo -ne "\r Requete en cours ..."${i}" \c"
+                i="${i}."
+		if [ ${ident} != "0" ];then
+			if [ ${ident} = "1" ];then
+				ckjobid=$(echo ${jobid} | awk '{print$2}')
+                		cktmp=$(ps -ef | grep sacct | grep ${ckjobid} | grep -Ev "$0|grep" | wc -l)
+			elif [ ${ident} = "2" ];then
+				cktmp=$(ps -ef | grep sacct | grep ${snni} | grep -Ev "$0|grep" | wc -l)
+			elif [ ${ident} = "3" ];then
+				cknnode=$(echo ${nnode} | sed 's/-/\\-/g' | sed 's/\[/\\[/g')
+				cktmp=$(ps -ef | grep sacct | grep "${cknnode}" | grep -Ev "$0|grep" | wc -l)
+			fi
+		else
+			if [ ${tim} = "3" ];then
+				cktimestart=$(echo ${timestart} | awk '{print$2}')
+				cktmp=$(ps -ef | grep sacct | grep ${cktimestart} | grep -Ev "$0|grep" | wc -l)
+			elif [ ${tim} = "4" ];then
+				#cktimeend=$(echo ${timeend} | awk '{print$2}')
+                                cktmp=$(ps -ef | grep sacct | grep ${timeend} | grep -Ev "$0|grep" | wc -l)
+			fi
+		fi
+                sleep 1s
+        done
+        # sed -i 's/.*/\\033\[0\;00m & \\033\[0m/' ${tmp}
+        echo -e ""
+	sed -i '/User/{s/^/ /g}' ${tmp}
+	sed -i '/---------/{s/^/ /g}' ${tmp}
+        sed -i '/COMPLETED/{s/.*/\\033\[1\;34m & \\033\[0m/}' ${tmp}
+        sed -i '/RUNNING/{s/.*/\\033\[1\;32m & \\033\[0m/}' ${tmp}
+        sed -i '/PENDING/{s/.*/\\033\[1\;36m & \\033\[0m/}' ${tmp}
+        sed -i '/FAILED/{s/.*/\\033\[41m & \\033\[0m/}' ${tmp}
+        sed -i '/CANCELLED/{s/.*/\\033\[1\;33m & \\033\[0m/}' ${tmp}
+        sed -i '/TIMEOUT/{s/.*/\\033\[1\;33m & \\033\[0m/}' ${tmp}
+	sed -i '/NODE_FAIL/{s/.*/\\033\[41m & \\033\[0m/}' ${tmp}
+        echo -e ""
+        echo -e "$(cat ${tmp})"
+        echo -e "${fc}\n"
+	rm -f ${tmp}
+        exit 0
+
+else
+        usage
+fi
+
