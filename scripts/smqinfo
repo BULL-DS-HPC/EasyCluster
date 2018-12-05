@@ -9,7 +9,7 @@ else
 	source /etc/default/easyslurm.conf
 fi
 
-if [ ${enable_mqinfo} != "on" ];then
+if [ ${enable_smqinfo} != "on" ];then
        echo -e "\nThe command is not enabled\n"
        exit 1
 fi
