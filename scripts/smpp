@@ -5,14 +5,14 @@
 # Declaration des variales
 #-------------------------
 
-if [ ! -f /etc/default/easycluster.conf ];then
+if [ ! -f /etc/default/easyslurm.conf ];then
 	echo -e "\n /!\ Error no configuration found ! \n"
 	exit 1
 else
-	source /etc/default/easycluster.conf
+	source /etc/default/easyslurm.conf
 fi
 
-if [ ${enable_mpp} != "on" ];then
+if [ ${enable_smpp} != "on" ];then
        echo -e "\nThe command is not enabled\n"
        exit 1
 fi
