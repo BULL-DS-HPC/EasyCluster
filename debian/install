@@ -1,9 +1,9 @@
-etc/default/easycluster.conf	etc/default
-scripts/cce_mpp			usr/bin
-scripts/cce_mpinfo		usr/bin
-scripts/cce_user		usr/bin
-scripts/cce_mqinfo		usr/bin
-scripts/cce_quota		usr/bin
+etc/default/easyslurm.conf	etc/default
+scripts/smpp			usr/bin
+scripts/smpinfo		usr/bin
+scripts/suser		usr/bin
+scripts/smqinfo		usr/bin
+scripts/squota		usr/bin
 scripts/toprod			usr/sbin
 scripts/todrain			usr/sbin
 scripts/topowerup		usr/sbin
