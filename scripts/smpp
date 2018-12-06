@@ -44,11 +44,11 @@ clusterpart=$(scontrol show part | awk -F "=" '/PartitionName=/{print$2}' | tr "
 function usage ()
 {
         echo ""
-        echo -e " Usage : $0 [-v] [-u NNI] [-s status] [-p partition] [ -n node ]"
+        echo -e " Usage : $0 [-v] [-u login] [-s status] [-p partition] [ -n node ]"
 	echo -e " Usage : $0 -c by_xxx" 
 	echo -e " Usage : $0 -j jobid [-o format,format,format]"
 	echo -e " Usage : $0 -N nodelist [-o format,format,format]"
-	echo -e " Usage : $0 [-J NNI] [-S starttime] [-E endtime] [-o format,format,...] "
+	echo -e " Usage : $0 [-J login] [-S starttime] [-E endtime] [-o format,format,...] "
         echo -e ""
 	echo -e " -v \t Niveau de verbosité"
 	echo -e " -u \t Affichage des jobs en machine pour un utilisateur ( '-u my' affiche mes jobs )"
