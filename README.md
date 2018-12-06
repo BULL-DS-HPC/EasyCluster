@@ -1,6 +1,6 @@
 # EasySlurm
 Wrapper Command Line for Slurm Scheduler
-
+```
 [root-zara-pts12] ~ # smpp -h
 
  Usage : /usr/bin/smpp [-v] [-u login] [-s status] [-p partition] [ -n node ]
@@ -37,7 +37,8 @@ Wrapper Command Line for Slurm Scheduler
     		 State           Submit        Suspended     SystemCPU
     		 Timelimit       TotalCPU      UID           User
     		 UserCPU         WCKey         WCKeyID
-
+```
+```
 [root-zara-pts12] ~ # smpp
 
   [Cluster - zara ( slurm version 17.11.2 )] 
@@ -50,7 +51,8 @@ Wrapper Command Line for Slurm Scheduler
     13479802       cn               cn_all          job011     login5    PENDING         0:00   3-00:00:00                  N/A        4 (QOSMaxCpuPerUserLim
   13460004_1       cn               cn_all           job0U     login6 COMPLETING     17:45:33     20:00:00  2018-12-05T15:50:01        1             zcn0055
 
-
+```
+```
 [root-zara-pts12] ~ # smqinfo 
 
   [Cluster - zara ( slurm version 17.11.2 )]  
@@ -62,8 +64,8 @@ Wrapper Command Line for Slurm Scheduler
                 all_short        100   00:00:00     cluster    1.000000                                                08:00:00               
                        gn        100   00:00:00     cluster    1.000000                                                08:00:00       cpu=460 
  
-
-
+```
+```
 [root-zara-pts12] ~ # cce_mpinfo 
 
   [Cluster - zara ( slurm version 17.11.2 )]  
@@ -75,7 +77,8 @@ Wrapper Command Line for Slurm Scheduler
         bm          1       UP        162          0         55        107       4288          0       1387       2901     32.34%                zbm[0001-0162]
 ....
 
-
+```
+```
 [root-zara-pts12] ~ # suser 
 
 Usage : suser [-S] [-X|-Y] -u utilisateur 
@@ -83,7 +86,8 @@ Usage : suser [-S] [-X|-Y] -u utilisateur
 	 -S 	 Utilisation screen
 	 -X|Y 	 Utilisation export graphique
 
-
+```
+```
 10:02:54 [login@zara ~]$ squota 
 
  Disk quota for user login ( uid 2856 ):
@@ -93,4 +97,4 @@ Usage : suser [-S] [-X|-Y] -u utilisateur
                         USR/login         home     14.38G       300G       450G      [-----]
                            notset      scratch          -          -          -            -
 
-
+```
